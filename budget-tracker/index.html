@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fintrack | Financial Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-shell">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">$₹¥</div>
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="dashboard">
+                    <i data-lucide="layout-dashboard"></i> <span>Dashboard</span>
+                </button>
+                <button class="nav-item" data-tab="expenses">
+                    <i data-lucide="receipt"></i> <span>Expenses</span>
+                </button>
+                <button class="nav-item" data-tab="investments">
+                    <i data-lucide="trending-up"></i> <span>Investments</span>
+                </button>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="exportBtn" class="btn-ghost"><i data-lucide="download"></i> Export</button>
+                <button id="importBtn" class="btn-ghost"><i data-lucide="upload"></i> Import</button>
+                <input type="file" id="importFile" hidden accept=".json">
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-viewport">
+            <header class="app-header">
+                <div class="user-info">
+                    <h1 id="greeting">Namaste, Swastik!</h1>
+                    <p id="headerTimestamp">Loading date...</p>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button id="uploadPdfBtn" class="btn-ghost" style="border: 1px solid var(--border); padding: 0.5rem 1rem;">
+                        <i data-lucide="file-text"></i> Upload PDF
+                    </button>
+                    <button id="addBtn" class="btn-primary">
+                        <i data-lucide="plus"></i> Add New
+                    </button>
+                </div>
+            </header>
+
+            <div class="scroll-area">
+                <!-- Dashboard -->
+                <div id="dashboard-view" class="tab-view active">
+                    <div class="period-switcher">
+                        <button class="period-btn active" data-period="week">Weekly</button>
+                        <button class="period-btn" data-period="month">Monthly</button>
+                        <button class="period-btn" data-period="year">Annually</button>
+                    </div>
+                    <div class="stat-grid">
+                        <div class="stat-card glass highlight">
+                            <span>Bank Balance</span>
+                            <h2 id="bankBalance">₹0</h2>
+                        </div>
+                        <div class="stat-card glass">
+                            <span>Net Worth</span>
+                            <h2 id="totalNetWorth">₹0</h2>
+                        </div>
+                        <div class="stat-card glass">
+                            <span>Expenses</span>
+                            <h2 id="monthlyExpenses" class="text-red">₹0</h2>
+                        </div>
+                        <div class="stat-card glass">
+                            <span>Investments</span>
+                            <h2 id="totalInvestments" class="text-green">₹0</h2>
+                        </div>
+                    </div>
+                    <div class="dash-layout">
+                        <div class="chart-box glass">
+                            <h3>Allocation</h3>
+                            <div class="canvas-wrapper">
+                                <canvas id="spendingChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="list-box glass">
+                            <h3>Recent Activity</h3>
+                            <div id="recentList" class="compact-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Expenses -->
+                <div id="expenses-view" class="tab-view">
+                    <div class="period-switcher">
+                        <button class="period-btn active" data-period="week">Weekly</button>
+                        <button class="period-btn" data-period="month">Monthly</button>
+                        <button class="period-btn" data-period="year">Annually</button>
+                    </div>
+                    <div class="view-header">
+                        <h2>All Expenses</h2>
+                    </div>
+                    <div class="dash-layout">
+                        <div id="fullExpensesList" class="full-list glass"></div>
+                        <div class="chart-box glass">
+                            <h3>Breakdown by Category</h3>
+                            <div class="canvas-wrapper">
+                                <canvas id="expenseBreakdownChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Investments -->
+                <div id="investments-view" class="tab-view">
+                    <div class="period-switcher">
+                        <button class="period-btn active" data-period="week">Weekly</button>
+                        <button class="period-btn" data-period="month">Monthly</button>
+                        <button class="period-btn" data-period="year">Annually</button>
+                    </div>
+                    <!-- Holdings Section -->
+                    <div class="collapsible-section active">
+                        <div class="collapsible-header" onclick="toggleSection(this)">
+                            <h2>Holdings Summary</h2>
+                            <i data-lucide="chevron-down" class="collapsible-icon"></i>
+                        </div>
+                        <div class="collapsible-content">
+                            <div id="holdingsList" class="holdings-track"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Performance Section -->
+                    <div class="collapsible-section active">
+                        <div class="collapsible-header" onclick="toggleSection(this)">
+                            <h2>Performance Summary</h2>
+                            <i data-lucide="chevron-down" class="collapsible-icon"></i>
+                        </div>
+                        <div class="collapsible-content">
+                            <div id="holdingsTable" class="data-table-container"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Transactions Section -->
+                    <div class="collapsible-section">
+                        <div class="collapsible-header" onclick="toggleSection(this)">
+                            <h2>All Transactions</h2>
+                            <i data-lucide="chevron-down" class="collapsible-icon"></i>
+                        </div>
+                        <div class="collapsible-content">
+                            <div id="fullInvestmentsList" class="full-list glass"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Floating Action Button -->
+        <button id="fabBtn" class="fab">
+            <i data-lucide="plus"></i>
+        </button>
+
+        <!-- Modal -->
+        <div id="modal" class="modal-overlay">
+            <div class="modal glass">
+                <div class="modal-head">
+                    <h3>Add Transaction</h3>
+                    <button id="closeModal">&times;</button>
+                </div>
+                <form id="txForm">
+                    <div class="toggle-box">
+                        <label><input type="radio" name="type" value="expense" checked> <span>Expense</span></label>
+                        <label><input type="radio" name="type" value="investment"> <span>Investment</span></label>
+                        <label><input type="radio" name="type" value="income"> <span>Income</span></label>
+                    </div>
+                    <input type="text" id="title" placeholder="Title/Ticker" required>
+                    <div id="invest-fields" class="hidden-fields">
+                        <div class="grid-2">
+                            <input type="number" id="qty" placeholder="Quantity" step="any">
+                            <input type="number" id="price" placeholder="Buy Price" step="any">
+                        </div>
+                        <small style="color: var(--muted); margin-top: 8px; display: block; font-size: 0.75rem; line-height: 1.4;">
+                            💡 <b>Stocks</b>: Use Ticker (RELIANCE, TCS)<br>
+                            💡 <b>Mutual Funds</b>: Use Scheme Name or Ticker if known.
+                        </small>
+                    </div>
+                    <input type="number" id="amount" placeholder="Total Amount" step="any" required>
+                    <select id="category">
+                        <option>Food</option>
+                        <option>Rent</option>
+                        <option>Transport</option>
+                        <option>Shopping</option>
+                        <option>Stock</option>
+                        <option>Mutual Fund</option>
+                        <option>Investment</option>
+                        <option>Salary</option>
+                        <option>Other</option>
+                    </select>
+                    <button type="submit" class="btn-primary w-full">Save</button>
+                </form>
+            </div>
+        </div>
+        <!-- Upload Modal -->
+        <div id="uploadModal" class="modal-overlay">
+            <div class="modal glass">
+                <div class="modal-head">
+                    <h3>Upload SBI Statement</h3>
+                    <button id="closeUploadModal" type="button">&times;</button>
+                </div>
+                <form id="uploadForm">
+                    <select id="stmtType" required style="margin-bottom: 1rem;">
+                        <option value="bank">SBI Bank Statement</option>
+                        <option value="cc">SBI Credit Card Bill</option>
+                    </select>
+                    <input type="file" id="pdfFile" accept=".pdf" required style="margin-bottom: 1rem;">
+                    <input type="password" id="pdfPassword" placeholder="PDF Password" style="margin-bottom: 1rem;">
+                    <button type="submit" id="uploadSubmitBtn" class="btn-primary w-full">Upload & Process</button>
+                    <p id="uploadStatus" style="color: var(--text); font-size: 0.85rem; text-align: center; margin-top: 10px; display: none;"></p>
+                </form>
+            </div>
+        </div>
+
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
