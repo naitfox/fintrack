@@ -31,6 +31,8 @@ document.addEventListener('DOMContentLoaded', () => {
         importFile: document.getElementById('importFile'),
         chartCanvas: document.getElementById('spendingChart'),
         expenseChartCanvas: document.getElementById('expenseBreakdownChart'),
+        expenseChartPlaceholder: document.getElementById('expenseChartPlaceholder'),
+        expenseCanvasWrapper: document.getElementById('expenseCanvasWrapper'),
         holdingsList: document.getElementById('holdingsList'),
         investFields: document.getElementById('invest-fields'),
         qtyInput: document.getElementById('qty'),
@@ -44,7 +46,11 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadForm: document.getElementById('uploadForm'),
         stmtType: document.getElementById('stmtType'),
         pdfPassword: document.getElementById('pdfPassword'),
-        uploadStatus: document.getElementById('uploadStatus')
+        uploadStatus: document.getElementById('uploadStatus'),
+        historyBtn: document.getElementById('uploadHistoryBtn'),
+        historyModal: document.getElementById('historyModal'),
+        closeHistoryModal: document.getElementById('closeHistoryModal'),
+        historyList: document.getElementById('historyList')
     };
 
     // Initialization
@@ -116,8 +122,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     v.classList.remove('active');
                     if (v.id === `${target}-view`) v.classList.add('active');
                 });
+                
+                localStorage.setItem('fintrack_active_tab', target);
             };
         });
+
+        // Restore active tab
+        const savedTab = localStorage.getItem('fintrack_active_tab');
+        if (savedTab) {
+            const tabToActivate = Array.from(elements.tabs).find(t => t.dataset.tab === savedTab);
+            if (tabToActivate) tabToActivate.click();
+        }
 
         // Period Switcher
         elements.periodBtns.forEach(btn => {
@@ -148,6 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.onclick = (e) => { 
             if (e.target === elements.modal) elements.modal.style.display = 'none'; 
             if (e.target === elements.uploadModal) elements.uploadModal.style.display = 'none';
+            if (e.target === elements.historyModal) elements.historyModal.style.display = 'none';
         };
 
         // Toggle fields in modal
@@ -233,6 +249,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         saveData();
                         refreshUI();
                         
+                        // Add to history
+                        let uploadHistory = JSON.parse(localStorage.getItem('fintrack_upload_history')) || [];
+                        uploadHistory.unshift({
+                            name: file.name,
+                            date: new Date().toISOString(),
+                            count: newTxs.length
+                        });
+                        localStorage.setItem('fintrack_upload_history', JSON.stringify(uploadHistory));
+                        
                         elements.uploadStatus.textContent = `Successfully added ${newTxs.length} transactions!`;
                         elements.uploadStatus.style.color = '#10b981'; // text-green
                         setTimeout(() => {
@@ -257,16 +282,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function setupForm() {
+        const autoCalcAmount = () => {
+            if (elements.txForm.type.value === 'investment') {
+                const q = parseFloat(elements.qtyInput.value);
+                const p = parseFloat(elements.priceInput.value);
+                if (!isNaN(q) && !isNaN(p)) {
+                    elements.amountInput.value = Math.abs(q * p).toFixed(2);
+                }
+            }
+        };
+        elements.qtyInput.addEventListener('input', autoCalcAmount);
+        elements.priceInput.addEventListener('input', autoCalcAmount);
+
         elements.txForm.onsubmit = (e) => {
             e.preventDefault();
             const type = elements.txForm.type.value;
-            let amount = parseFloat(elements.amountInput.value);
+            let amount = Math.abs(parseFloat(elements.amountInput.value) || 0);
             const qty = parseFloat(elements.qtyInput.value) || 0;
             const price = parseFloat(elements.priceInput.value) || 0;
-
-            if (type === 'investment' && qty > 0 && price > 0) {
-                amount = qty * price;
-            }
 
             if (editingId) {
                 const index = transactions.findIndex(t => t.id === editingId);
@@ -322,6 +355,31 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             reader.readAsText(e.target.files[0]);
         };
+
+        if (elements.historyBtn) {
+            elements.historyBtn.onclick = () => {
+                let history = JSON.parse(localStorage.getItem('fintrack_upload_history')) || [];
+                if (history.length === 0) {
+                    elements.historyList.innerHTML = '<div style="text-align: center; color: var(--muted); padding: 1rem;">No upload history found.</div>';
+                } else {
+                    elements.historyList.innerHTML = history.map(h => `
+                        <div class="transaction-item" style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid var(--border);">
+                            <div>
+                                <strong style="display: block;">${h.name}</strong>
+                                <small style="color: var(--muted);">${new Date(h.date).toLocaleString()}</small>
+                            </div>
+                            <div style="color: var(--green);">${h.count} added</div>
+                        </div>
+                    `).join('');
+                }
+                elements.historyModal.style.display = 'flex';
+                lucide.createIcons();
+            };
+        }
+
+        if (elements.closeHistoryModal) {
+            elements.closeHistoryModal.onclick = () => elements.historyModal.style.display = 'none';
+        }
     }
 
     function saveData() {
@@ -401,7 +459,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderHoldings();
         renderHoldingsTable();
         
-        if (myChart) updateChart(currentBankBalance, totalCurrentInvestments);
+        if (myChart) updateChart(currentBankBalance, holdings);
         if (expenseChart) updateExpenseChart(expenses);
         lucide.createIcons();
     }
@@ -483,6 +541,29 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.modal.style.display = 'flex';
     };
 
+    window.transactHolding = (ticker) => {
+        editingId = null;
+        elements.txForm.reset();
+        document.querySelector('#modal h3').textContent = `Transact: ${ticker}`;
+        
+        // Need to set the radio button correctly
+        Array.from(elements.txForm.type).forEach(r => {
+            if(r.value === 'investment') r.checked = true;
+        });
+        
+        document.getElementById('title').value = ticker;
+        document.getElementById('category').value = 'Stock';
+        
+        toggleInvestFields();
+        elements.modal.style.display = 'flex';
+        
+        // Focus the quantity input and remind user they can use negative
+        setTimeout(() => {
+            elements.qtyInput.focus();
+            elements.qtyInput.placeholder = "Qty (use negative to sell)";
+        }, 100);
+    };
+
     // Global action handlers are attached to window above.
 
 
@@ -514,8 +595,33 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function updateChart(currentBankBalance, totalCurrentInvestments) {
-        myChart.data.datasets[0].data = [Math.max(0, currentBankBalance), totalCurrentInvestments];
+    function updateChart(currentBankBalance, holdings) {
+        let labels = ['Cash in Bank'];
+        let data = [Math.max(0, currentBankBalance)];
+        let bgColors = ['#38bdf8']; // Cash color
+        
+        const invColors = ['#10b981', '#f43f5e', '#fb923c', '#6366f1', '#f472b6', '#a855f7', '#eab308', '#14b8a6'];
+        
+        holdings.forEach((h, i) => {
+            // Shortened name: first word, up to 10 chars
+            let shortName = h.title.split(' ')[0].substring(0, 10);
+            // Fallback for long continuous strings
+            if (shortName.length > 10) shortName = shortName.substring(0, 10) + '..';
+            
+            // Need to get livePrice here or use avgPrice
+            const price = livePrices[h.title] || h.avgPrice;
+            const currentValue = price * h.totalQty;
+            
+            if (currentValue > 0) {
+                labels.push(shortName);
+                data.push(currentValue);
+                bgColors.push(invColors[i % invColors.length]);
+            }
+        });
+        
+        myChart.data.labels = labels;
+        myChart.data.datasets[0].data = data;
+        myChart.data.datasets[0].backgroundColor = bgColors;
         myChart.update();
     }
     
@@ -550,9 +656,19 @@ document.addEventListener('DOMContentLoaded', () => {
             categories[e.category] = (categories[e.category] || 0) + e.amount;
         });
 
-        expenseChart.data.labels = Object.keys(categories);
-        expenseChart.data.datasets[0].data = Object.values(categories);
-        expenseChart.update();
+        const categoryKeys = Object.keys(categories);
+        
+        if (categoryKeys.length === 0) {
+            if (elements.expenseCanvasWrapper) elements.expenseCanvasWrapper.style.display = 'none';
+            if (elements.expenseChartPlaceholder) elements.expenseChartPlaceholder.style.display = 'flex';
+        } else {
+            if (elements.expenseCanvasWrapper) elements.expenseCanvasWrapper.style.display = 'block';
+            if (elements.expenseChartPlaceholder) elements.expenseChartPlaceholder.style.display = 'none';
+            
+            expenseChart.data.labels = categoryKeys;
+            expenseChart.data.datasets[0].data = Object.values(categories);
+            expenseChart.update();
+        }
     }
 
     function renderHoldings() {
@@ -571,7 +687,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             return `
                 <div class="holding-card glass">
-                    <div class="ticker">${h.title}</div>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div class="ticker">${h.title}</div>
+                        <button class="action-icon" onclick="window.transactHolding('${h.title.replace(/'/g, "\\'")}')" title="Add / Sell" style="background: rgba(255,255,255,0.05); padding: 6px; border-radius: 8px;">
+                            <i data-lucide="more-vertical"></i>
+                        </button>
+                    </div>
                     <div class="main-val">₹${(currentValue || h.totalInvested).toLocaleString()}</div>
                     <div class="stats">
                         <span>Qty: <b>${h.totalQty.toLocaleString()}</b></span>
@@ -663,21 +784,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function calculateHoldings() {
         const holdingsMap = {};
-        transactions.filter(t => t.type === 'investment').forEach(t => {
+        // Sort chronologically for correct sell accounting
+        const sorted = [...transactions]
+            .filter(t => t.type === 'investment')
+            .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        sorted.forEach(t => {
             const key = t.title.toUpperCase().trim();
             if (!holdingsMap[key]) {
-                holdingsMap[key] = { title: key, totalQty: 0, totalInvested: 0 };
+                holdingsMap[key] = { title: key, totalQty: 0, totalInvested: 0, avgPrice: 0 };
             }
-            const qty = t.qty || 1; // Fallback for old data
-            const amount = t.amount || 0;
-            holdingsMap[key].totalQty += qty;
-            holdingsMap[key].totalInvested += amount;
+            
+            const h = holdingsMap[key];
+            const qty = (t.qty !== undefined && t.qty !== null && t.qty !== "") ? parseFloat(t.qty) : 1;
+            const amount = Math.abs(parseFloat(t.amount) || 0);
+
+            if (qty > 0) {
+                h.totalQty += qty;
+                h.totalInvested += amount;
+                if (h.totalQty > 0) h.avgPrice = h.totalInvested / h.totalQty;
+            } else if (qty < 0) {
+                h.totalQty += qty;
+                if (h.totalQty <= 0) {
+                    h.totalQty = 0;
+                    h.totalInvested = 0;
+                    h.avgPrice = 0;
+                } else {
+                    h.totalInvested = h.totalQty * h.avgPrice;
+                }
+            } else {
+                h.totalInvested += amount;
+            }
         });
 
-        return Object.values(holdingsMap).map(h => ({
-            ...h,
-            avgPrice: h.totalInvested / h.totalQty
-        }));
+        return Object.values(holdingsMap).filter(h => h.totalQty > 0);
     }
 
     window.toggleSection = (header) => {

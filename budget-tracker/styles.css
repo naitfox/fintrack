@@ -186,9 +186,11 @@ h1, h2, h3, .logo { font-family: 'Outfit', sans-serif; }
     display: grid;
     grid-template-columns: 1.5fr 1fr;
     gap: 1.5rem;
+    align-items: stretch;
 }
 
-.canvas-wrapper { height: 250px; position: relative; margin-top: 1rem; }
+.canvas-wrapper { flex: 1; min-height: 200px; width: 100%; position: relative; margin-top: 1rem; }
+.chart-box { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 
 /* Lists */
 .transaction-item {
@@ -240,7 +242,16 @@ h1, h2, h3, .logo { font-family: 'Outfit', sans-serif; }
 
 .transaction-item:last-child { border: none; }
 
-.full-list { min-height: 400px; margin-top: 1.5rem; }
+.full-list { 
+    height: calc(100vh - 330px); /* Adjusted to prevent slight page scroll */
+    overflow-y: auto; 
+    margin-top: 1.5rem;
+    padding-right: 0.5rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary) transparent;
+}
+.full-list::-webkit-scrollbar { width: 6px; }
+.full-list::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 10px; }
 
 /* Holdings Track - Horizontal Scroll */
 .holdings-track {
