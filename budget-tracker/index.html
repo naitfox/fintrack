@@ -78,7 +78,7 @@
                             <h2 id="totalInvestments" class="text-green">₹0</h2>
                         </div>
                     </div>
-                    <div class="dash-layout">
+                    <div class="dashboard-panels">
                         <div class="chart-box glass">
                             <h3>Allocation</h3>
                             <div class="canvas-wrapper">
@@ -88,6 +88,15 @@
                         <div class="list-box glass">
                             <h3>Recent Activity</h3>
                             <div id="recentList" class="compact-list"></div>
+                        </div>
+                    </div>
+                    <div class="chart-box glass dashboard-trend">
+                        <div class="section-head">
+                            <h3>Net Worth Over Time</h3>
+                            <span class="chart-note">Daily closing balance</span>
+                        </div>
+                        <div class="canvas-wrapper trend-wrapper">
+                            <canvas id="netWorthChart"></canvas>
                         </div>
                     </div>
                 </div>

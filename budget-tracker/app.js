@@ -5,7 +5,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let transactions = JSON.parse(localStorage.getItem('fintrack_data')) || [];
     let myChart = null;
     let expenseChart = null;
+    let netWorthChart = null;
     let currentPeriod = 'week'; // Default
+    let currentTab = localStorage.getItem('fintrack_active_tab') || 'dashboard';
     let livePrices = {};
     let editingId = null;
 
@@ -33,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
         expenseChartCanvas: document.getElementById('expenseBreakdownChart'),
         expenseChartPlaceholder: document.getElementById('expenseChartPlaceholder'),
         expenseCanvasWrapper: document.getElementById('expenseCanvasWrapper'),
+        netWorthChartCanvas: document.getElementById('netWorthChart'),
         holdingsList: document.getElementById('holdingsList'),
         investFields: document.getElementById('invest-fields'),
         qtyInput: document.getElementById('qty'),
@@ -55,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialization
     async function init() {
+        applyTab(currentTab, false);
         await loadFromServer();
         setupTabs();
         setupModal();
@@ -63,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setupDataActions();
         initChart();
         initExpenseChart();
+        initNetWorthChart();
         refreshUI();
         fetchPrices();
         startClock();
@@ -114,16 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setupTabs() {
         elements.tabs.forEach(tab => {
             tab.onclick = () => {
-                const target = tab.dataset.tab;
-                elements.tabs.forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                
-                elements.views.forEach(v => {
-                    v.classList.remove('active');
-                    if (v.id === `${target}-view`) v.classList.add('active');
-                });
-                
-                localStorage.setItem('fintrack_active_tab', target);
+                applyTab(tab.dataset.tab);
             };
         });
 
@@ -145,6 +141,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 refreshUI();
             };
         });
+    }
+
+    function applyTab(tabName, persist = true) {
+        const isValidTab = [...elements.tabs].some(tab => tab.dataset.tab === tabName);
+        currentTab = isValidTab ? tabName : 'dashboard';
+
+        elements.tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === currentTab));
+        elements.views.forEach(v => v.classList.toggle('active', v.id === `${currentTab}-view`));
+
+        if (persist) {
+            localStorage.setItem('fintrack_active_tab', currentTab);
+        }
     }
 
     function setupModal() {
@@ -194,7 +202,6 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.uploadPdfBtn.onclick = () => {
             elements.uploadForm.reset();
             elements.uploadStatus.style.display = 'none';
-            elements.stmtType.dispatchEvent(new Event('change')); // Trigger auto-fill password
             elements.uploadModal.style.display = 'flex';
         };
 
@@ -203,11 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         
         elements.stmtType.onchange = (e) => {
-            if (e.target.value === 'bank') {
-                elements.pdfPassword.value = '78103101299';
-            } else if (e.target.value === 'cc') {
-                elements.pdfPassword.value = '101219991272';
-            }
+            elements.pdfPassword.value = '';
         };
 
         elements.uploadForm.onsubmit = async (e) => {
@@ -461,6 +464,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (myChart) updateChart(currentBankBalance, holdings);
         if (expenseChart) updateExpenseChart(expenses);
+        if (netWorthChart) updateNetWorthChart();
         lucide.createIcons();
     }
 
@@ -647,6 +651,131 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
+    }
+
+    function initNetWorthChart() {
+        if (!elements.netWorthChartCanvas) return;
+        const ctx = elements.netWorthChartCanvas.getContext('2d');
+        netWorthChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Net Worth',
+                    data: [],
+                    borderColor: '#38bdf8',
+                    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        displayColors: false,
+                        callbacks: {
+                            title: (items) => items[0].label,
+                            label: (context) => ` ₹${context.raw.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            color: '#94a3b8',
+                            maxRotation: 0,
+                            minRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 7,
+                            padding: 8
+                        },
+                        grid: { display: false },
+                        border: { display: false }
+                    },
+                    y: {
+                        ticks: {
+                            color: '#94a3b8',
+                            callback: (value) => `₹${Number(value).toLocaleString()}`
+                        },
+                        grid: { color: 'rgba(255,255,255,0.06)' },
+                        border: { display: false }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateNetWorthChart() {
+        const series = buildNetWorthSeries();
+        netWorthChart.data.labels = series.map(point => point.label);
+        netWorthChart.data.datasets[0].data = series.map(point => point.value);
+        netWorthChart.update();
+    }
+
+    function buildNetWorthSeries() {
+        const sortedTransactions = [...transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+        if (!sortedTransactions.length) {
+            const todayLabel = formatChartDate(new Date());
+            return [{ label: todayLabel, value: 0 }];
+        }
+
+        const dailySnapshots = new Map();
+        let cashBalance = 0;
+        let investmentValue = 0;
+
+        sortedTransactions.forEach(tx => {
+            if (tx.type === 'income') {
+                cashBalance += tx.amount;
+            } else if (tx.type === 'expense') {
+                cashBalance -= tx.amount;
+            } else if (tx.type === 'investment') {
+                cashBalance -= tx.amount;
+                investmentValue += tx.amount;
+            }
+
+            const dayKey = getLocalDateKey(tx.date);
+            dailySnapshots.set(dayKey, {
+                label: formatChartDate(tx.date),
+                fullLabel: formatFullChartDate(tx.date),
+                value: cashBalance + investmentValue
+            });
+        });
+
+        return [...dailySnapshots.values()];
+    }
+
+    function getLocalDateKey(dateValue) {
+        const date = new Date(dateValue);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    function formatChartDate(dateValue) {
+        return new Intl.DateTimeFormat('en-IN', {
+            month: 'short',
+            day: 'numeric'
+        }).format(new Date(dateValue));
+    }
+
+    function formatFullChartDate(dateValue) {
+        return new Intl.DateTimeFormat('en-IN', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        }).format(new Date(dateValue));
     }
 
     function updateExpenseChart(expenses) {
